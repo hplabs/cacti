@@ -2543,8 +2543,11 @@ void output_data_csv(const uca_org_t & fin_res, string fn)
   }
   else
   {
+    // MODIFIED to output CACTI IO metrics
     IOTechParam iot(g_ip, g_ip->io_type, g_ip->num_mem_dq, g_ip->mem_data_width, g_ip->num_dq,g_ip->dram_dimm, 1,g_ip->bus_freq ); 
     Extio testextio(&iot);
+    // MODIFIED end
+
     if (print_index == true)
     {
       file << "Tech node (nm), ";
