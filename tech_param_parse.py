@@ -3,8 +3,8 @@ import pandas as pd
 import os
 import subprocess
 
+names = ["architecture", "current", "semiconductor", "SRAM_data", "CAM_data", "DRAM_data", "DRAM_cell", "chip_data_dict", "wire", "TSV_data"]
 
-tech_result = None
 def float_to_exponential(num):
     return format(num, "e")
 
@@ -16,78 +16,73 @@ def parse(file, first, last):
     chunk.loc[len(chunk)] = None
     return chunk
 
-def partition(tech_param, tech_result):
+def partition(tech_param):
     tech_param = pd.read_csv(tech_param, names = ['parameters'])
-    tech_result = None
-    part = None
 
-    for x in range(11):
-        if x==1:
-            part = parse(tech_param, 0, 13)
-            tech_result = part
-            # print(tech_part)
-        elif x==2:
-            part = parse(tech_param, 13, 36)
-            # tech_part.columns =['parameters', '(unit)', 'temp', 'hp','lstp','lop','lp-dram ','comm-dram']
-            # print(part)
-        elif x==3:
-            part = parse(tech_param, 36, 44)
-            # tech_part.columns =['parameters', '(unit)', 'hp', 'lstp', 'lop', 'lp-dram', 'comm-dram']
-            # print(tech_part)
-        elif x==4:
-            part = parse(tech_param, 44, 51)
-            # tech_part.columns =['parameters', '(unit)', 'cell_type', 'hp', 'lstp', 'lop','lp-dram','comm-dram']
-            # print(tech_part)
-        elif x==5:
-            part = parse(tech_param, 51, 58)
-            # tech_part.columns =['parameters', '(unit)', 'cell_type', 'hp', 'lstp', 'lop','lp-dram','comm-dram']
-            # print(tech_part)
-        elif x==6:
-            part = parse(tech_param, 58, 66)
-            # tech_part.columns =['parameters', '(unit)','cell_type', 'hp', 'lstp', 'lop','lp-dram','comm-dram']
-            # print(tech_part)
-        elif x==7:
-            part = parse(tech_param, 66, 71)
-            # tech_part.columns =['parameters', '(unit)', 'hp',  'lstp',   'lop',  'lp-dram',   'comm-dram' ]
-            # print(tech_part)
-        elif x==8:
-            part = parse(tech_param, 71, 78)
-            # print(tech_part)
-        elif x==9:
-            part = parse(tech_param, 78, 90)
-            # tech_part.columns =['parameters','(units)', '0/0', '0/1', '0/2', '0/3', '1/0', '1/1', '1/2', '1/3' ]
-            # print(tech_part)
-        elif x==10:
-            part = parse(tech_param, 90, None)
-            # tech_part.columns =['parameters','(units)', '0/0', '0/1', '0/2', '1/0', '1/1', '1/2' ]
-            # print(tech_part)
+    architecture = parse(tech_param, 1, 13)
+    architecture.columns =['parameters', '(unit)', 'hp','lstp','lop','lp-dram ','comm-dram']
 
-        # print(tech_part)
-        if x>1:
-            tech_result=pd.concat([tech_result, part], ignore_index=True)
-    return tech_result
+    current = parse(tech_param, 14, 36)
+    current.columns =['parameters', '(unit)', 'temp', 'hp','lstp','lop','lp-dram ','comm-dram']
+
+    semiconductor = parse(tech_param, 37, 44)
+    semiconductor.columns =['parameters', '(unit)', 'hp', 'lstp', 'lop', 'lp-dram', 'comm-dram']
+
+    SRAM_data = parse(tech_param, 46, 51)
+    SRAM_data.columns =['parameters', '(unit)', 'cell_type', 'hp', 'lstp', 'lop','lp-dram','comm-dram']
+
+    CAM_data = parse(tech_param, 53, 58)
+    CAM_data.columns =['parameters', '(unit)', 'cell_type', 'hp', 'lstp', 'lop','lp-dram','comm-dram']
+
+    DRAM_data = parse(tech_param, 60, 66)
+    DRAM_data.columns =['parameters', '(unit)','cell_type', 'hp', 'lstp', 'lop','lp-dram','comm-dram']
+
+    DRAM_cell= parse(tech_param, 67, 71)
+    DRAM_cell.columns =['parameters', '(unit)', 'hp',  'lstp',   'lop',  'lp-dram',   'comm-dram' ]
+
+    chip_data = parse(tech_param, 71, 78)
+    chip_data.columns =[" ", "  ", "    "]
+    # chip_data_dict = {chip_data[0][0]: chip_data[1][0]}
+    # for x in range(8):
+    #     chip_data_dict.update ({chip_data[0][x]: chip_data[1][x]})
+
+    wire = parse(tech_param, 79, 90)
+    wire.columns =['parameters','(units)', '0/0', '0/1', '0/2', '0/3', '1/0', '1/1', '1/2', '1/3' ]
+
+    TSV_data = parse(tech_param, 91, None)
+    TSV_data.columns =['parameters','(units)', '0/0', '0/1', '0/2', '0/3', '1/0', '1/1', '1/2', '1/3']
+
+    return architecture, current, semiconductor, SRAM_data, CAM_data, DRAM_data, DRAM_cell, chip_data, wire, TSV_data
 
 
 
 
-data = partition("real/90nm.dat", tech_result)
-control = partition("real/90nm.dat", tech_result)
+data = partition("tech_params/90nm.dat")
+tech_param_dict = {names[0]:data[0]}
+initialize = {"none" : []}
+initialize = pd.DataFrame(data=initialize)
+for x in range(10):
+    tech_param_dict.update({names[x]:data[x]})
 
+print (tech_param_dict)
 
-data.to_csv('tech_params/90nm.dat', index=False, header=False, sep=' ')
+initialize.to_csv('tech_params/90nmtest.dat', index=False, header=False, sep=' ')
 
-# make sure to allow targeting for each cell by header
-for y in range (len(data)):
-    for x in range (len(data.columns)):
-        cell = data.iloc[y,x]
-        if cell == "parameters":
-            break
-        if not(pd.isnull(cell)) and cell[0].isdigit():
-            data.iloc[y,x] = float_to_exponential(float(data.iloc[y,x])*1000)
-            # data.to_csv('tech_params/90nm.dat', index=False, header=True, sep=' ')
+for key in tech_param_dict:
+    tech_param_dict[key].to_csv('tech_params/90nmtest.dat', mode='a', index=False, header=True, sep=' ')
 
-            # print (data)
-            data = partition("real/90nm.dat", tech_result)
+# # make sure to allow targeting for each cell by header
+# for y in range (len(data)):
+#     for x in range (len(data.columns)):
+#         cell = data.iloc[y,x]
+#         if cell == "parameters":
+#             break
+#         if not(pd.isnull(cell)) and cell[0].isdigit():
+#             data.iloc[y,x] = float_to_exponential(float(data.iloc[y,x])*1000)
+#             # data.to_csv('tech_params/90nm.dat', index=False, header=True, sep=' ')
+
+#             # print (data)
+#             data = partition("tech_params/90nm.dat", tech_result)
             # os.system("./cacti -infile cache.cfg > output.txt")
             # os.system("diff control.txt output.txt >> cool/" + control.iloc[y+1,0] + ".txt")
             # file = open(control.iloc[y+1,0]+".txt")
