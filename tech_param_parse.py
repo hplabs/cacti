@@ -1,12 +1,16 @@
 
 import pandas as pd
 import os
-import subprocess
+import shutil
+
 
 names = ["architecture", "current", "semiconductor", "SRAM_data", "CAM_data", "DRAM_data", "DRAM_cell", "chip_data_dict", "wire", "TSV_data"]
 
 def float_to_exponential(num):
     return format(num, "e")
+
+def substring_after(s, delim):
+    return s.partition(delim)[2]
 
 # read the unit header but don't add the column label to it 
 def parse(file, first, last):
@@ -20,10 +24,10 @@ def partition(tech_param):
     tech_param = pd.read_csv(tech_param, names = ['parameters'])
 
     architecture = parse(tech_param, 1, 13)
-    architecture.columns =['parameters', '(unit)', 'hp','lstp','lop','lp-dram ','comm-dram']
+    architecture.columns =['parameters', '(unit)', 'hp','lstp','lop','lp-dram','comm-dram']
 
     current = parse(tech_param, 14, 36)
-    current.columns =['parameters', '(unit)', 'temp', 'hp','lstp','lop','lp-dram ','comm-dram']
+    current.columns =['parameters', '(unit)', 'temp', 'hp','lstp','lop','lp-dram','comm-dram']
 
     semiconductor = parse(tech_param, 37, 44)
     semiconductor.columns =['parameters', '(unit)', 'hp', 'lstp', 'lop', 'lp-dram', 'comm-dram']
@@ -41,7 +45,7 @@ def partition(tech_param):
     DRAM_cell.columns =['parameters', '(unit)', 'hp',  'lstp',   'lop',  'lp-dram',   'comm-dram' ]
 
     chip_data = parse(tech_param, 71, 78)
-    chip_data.columns =[" ", "  ", "    "]
+    chip_data.columns =["parameters", "(unit)", "value"]
     # chip_data_dict = {chip_data[0][0]: chip_data[1][0]}
     # for x in range(8):
     #     chip_data_dict.update ({chip_data[0][x]: chip_data[1][x]})
@@ -54,47 +58,135 @@ def partition(tech_param):
 
     return architecture, current, semiconductor, SRAM_data, CAM_data, DRAM_data, DRAM_cell, chip_data, wire, TSV_data
 
+def convert(dict, file):
+    for key in dict:
+        dict[key].to_csv(file, mode='a', index=False, header=True, sep=' ')
+
+def merge(file):
+    dict = {names[0]:data[0]}
+    initialize = {"none" : []}
+    initialize = pd.DataFrame(data=initialize)
+    initialize.to_csv(file, index=False, header=False, sep=' ')
+    for x in range(10):
+        dict.update({names[x]:data[x]})
+    return dict
 
 
 
-data = partition("tech_params/90nm.dat")
-tech_param_dict = {names[0]:data[0]}
-initialize = {"none" : []}
-initialize = pd.DataFrame(data=initialize)
-for x in range(10):
-    tech_param_dict.update({names[x]:data[x]})
+data = partition("tech_params_control/90nm.dat")
+tech_param_dict = merge('tech_params/90nm.dat')
+convert(tech_param_dict, 'tech_params/90nm.dat')
+os.system("./cacti -infile cache.cfg > control.txt")
 
-print (tech_param_dict)
 
-initialize.to_csv('tech_params/90nmtest.dat', index=False, header=False, sep=' ')
 
-for key in tech_param_dict:
-    tech_param_dict[key].to_csv('tech_params/90nmtest.dat', mode='a', index=False, header=True, sep=' ')
+outputs = ["Access time", "Cycle time", "Total dynamic read energy per access", "Total dynamic write energy per access", 
+           "Total leakage power of a bank", "Total gate leakage power of a bank", "Cache height x width", "IO Area", 
+           "IO Dynamic Power", "IO Termination and Bias Power"]
 
-# # make sure to allow targeting for each cell by header
-# for y in range (len(data)):
-#     for x in range (len(data.columns)):
-#         cell = data.iloc[y,x]
-#         if cell == "parameters":
-#             break
-#         if not(pd.isnull(cell)) and cell[0].isdigit():
-#             data.iloc[y,x] = float_to_exponential(float(data.iloc[y,x])*1000)
-#             # data.to_csv('tech_params/90nm.dat', index=False, header=True, sep=' ')
+inputs = []
+for name in tech_param_dict:
+    temp = 0
+    chunk = tech_param_dict[name]
+    for y in range(len(chunk)):
+        if not(pd.isnull(chunk.iloc[y,0])):
+            if chunk.iloc[y,0] == "-I_off_n" or chunk.iloc[y,0] == "-I_g_on_n":
+                inputs.append(name + chunk.iloc[y,0] + "-" + str(temp*10))
+                if temp == 10:
+                    temp = 0
+                else:
+                    temp = temp + 1
+            else:
+                inputs.append(name + chunk.iloc[y,0])
+# print (inputs)
 
-#             # print (data)
-#             data = partition("tech_params/90nm.dat", tech_result)
-            # os.system("./cacti -infile cache.cfg > output.txt")
-            # os.system("diff control.txt output.txt >> cool/" + control.iloc[y+1,0] + ".txt")
-            # file = open(control.iloc[y+1,0]+".txt")
-            # lines = fp.readlines()
-            # for line in lines:
-            #     # check if string present on a current line
-            #     if line.find(word) != -1:
-            #         print(word, 'string exists in file')
-            #         print('Line Number:', lines.index(line))
-            # #         print('Line:', line)
-            # data = partition("real/90nm.dat", tech_result)
+table_outputs = pd.DataFrame(columns = outputs, index = inputs)
+table_outputs.to_csv("final.csv", index=True, header=True)
+
+
+#parse through each chunk and do it bruh
+temp = 0
+for chunkName in tech_param_dict:
+    for y in range (len(tech_param_dict[chunkName])):
+        input = tech_param_dict[chunkName].iloc[y,0]
+        print (input)
         
+        if input == '-I_off_n' or input == '-I_g_on_n':
+                input = input + "-" + str(temp*10)
+                if temp == 10:
+                    temp = 0
+                else:
+                    temp = temp + 1
+
+        if pd.isnull(input):
+            continue
+        
+        input = chunkName + input
+        directory = "results/" + input
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        else:
+            shutil.rmtree(directory)         
+            os.makedirs(directory)
+
+        for x in range (len(tech_param_dict[chunkName].columns)):
+
+            cell = tech_param_dict[chunkName].iloc[y,x]
+            if not(pd.isnull(cell)) and cell[0].isdigit():
+                if tech_param_dict[chunkName].iat[y,x] == 0:
+                    tech_param_dict[chunkName].iat[y,x] = 1
+                else:
+                    tech_param_dict[chunkName].iat[y,x] = float_to_exponential(float(tech_param_dict[chunkName].iat[y,x])*100)
+                # print(tech_param_dict[chunkName].iat[y,x])
+
+                # print (tech_param_dict[chunkName])
+                print (input)
+                convert(tech_param_dict, 'tech_params/90nm.dat') #converts dictionary into .dat file
+
+                os.system("./cacti -infile cache.cfg > output.txt")
+                if os.system("./cacti -infile cache.cfg > output.txt") != 0:
+                    data = partition("tech_params_control/90nm.dat") #resets data tuple
+                    tech_param_dict = merge('tech_params/90nm.dat') #puts each dataframe in the dictionary, labeled
+                    convert(tech_param_dict, 'tech_params/90nm.dat') #converts dictionary into .dat file
+                    continue
+                os.system("diff control.txt output.txt > " + directory + "/" + str(tech_param_dict[chunkName].columns[x]).replace( '/', '') + input + ".txt")
+
+
+                diff = open(directory + "/" + str(tech_param_dict[chunkName].columns[x]).replace( '/', '') + input + ".txt")
+                lines = diff.readlines()
+                counter = 0; 
+                value = None
+                value2 = None
+
+                for word in outputs:
+                    for line in lines:
+                        if line.find(word) != -1 and counter == 1:
+                            # print("found2")
+                            value2 = substring_after(line, ":")
+                            value2 = value2.replace('\n', '')
+                            if pd.isnull(table_outputs.at[input,word]) or table_outputs.at[input,word] == 'none':
+                                table_outputs.at[input,word] = str(tech_param_dict[chunkName].columns[x]) + ":, control:" + value + ", output:" + value2 + "\n"
+                            else:
+                                table_outputs.at[input,word] = table_outputs.at[input,word] + str(tech_param_dict[chunkName].columns[x]) + ":, control:" + value + ", output:" + value2 + "\n"
+                            counter = 0; 
+                            break
+                        elif line.find(word) != -1:
+                            # print("found1")
+                            counter = 1
+                            value = substring_after(line, ":")
+                            value = value.replace('\n', '')
+                        else:
+                            # print (table_outputs.at[input, word])
+                            if pd.isnull(table_outputs.at[input, word]):
+                                table_outputs.at[input, word] = "none"   
+                            # print (table_outputs.at[input, word])
+
+                data = partition("tech_params_control/90nm.dat") #resets data tuple
+                tech_param_dict = merge('tech_params/90nm.dat') #puts each dataframe in the dictionary, labeled
+                convert(tech_param_dict, 'tech_params/90nm.dat') #converts dictionary into .dat file
+
+table_outputs.to_csv("final.csv", index=True, header=True)
+    
 '''
 readL: outputs dataframesss
 
@@ -102,6 +194,15 @@ process: change the values, write to data, call cacti
 output to a different file and process that one instead 
 
 write: input dataframes
+
+get the table going .csv
+
+
+IO Area (sq.mm) = inf
+IO Dynamic Power (mW) = 1506.36 PHY Power (mW) = 232.752 PHY Wakeup Time (us) = 27.503
+IO Termination and Bias Power (mW) = 2505.96
+
+
 '''
 
 
