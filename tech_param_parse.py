@@ -2,6 +2,7 @@
 import pandas as pd
 import os
 import shutil
+import subprocess
 
 
 names = ["architecture", "current", "semiconductor", "SRAM_data", "CAM_data", "DRAM_data", "DRAM_cell", "chip_data_dict", "wire", "TSV_data"]
@@ -72,10 +73,10 @@ def merge(file):
     return dict
 
 
-
-data = partition("tech_params_control/90nm.dat")
-tech_param_dict = merge('tech_params/90nm.dat')
-convert(tech_param_dict, 'tech_params/90nm.dat')
+tech_size = "90nm"
+data = partition("tech_params_control/"+ tech_size + ".dat")
+tech_param_dict = merge('tech_params/' + tech_size + ".dat")
+convert(tech_param_dict, 'tech_params/' + tech_size + ".dat")
 os.system("./cacti -infile cache.cfg > control.txt")
 
 
@@ -91,101 +92,100 @@ for name in tech_param_dict:
     for y in range(len(chunk)):
         if not(pd.isnull(chunk.iloc[y,0])):
             if chunk.iloc[y,0] == "-I_off_n" or chunk.iloc[y,0] == "-I_g_on_n":
-                inputs.append(name + chunk.iloc[y,0] + "-" + str(temp*10))
-                if temp == 10:
-                    temp = 0
-                else:
-                    temp = temp + 1
+                for column in chunk.columns[3:]:
+                    inputs.append(name + chunk.iloc[y,0] + "-" + column + "-" + chunk.iloc[y,2])
             else:
-                inputs.append(name + chunk.iloc[y,0])
+                for column in chunk.columns[2:]:
+                    inputs.append(name + chunk.iloc[y,0] + "-" + column.replace( '/', ''))
 # print (inputs)
 
 table_outputs = pd.DataFrame(columns = outputs, index = inputs)
 table_outputs.to_csv("final.csv", index=True, header=True)
 
-
 #parse through each chunk and do it bruh
-temp = 0
 for chunkName in tech_param_dict:
     for y in range (len(tech_param_dict[chunkName])):
-        input = tech_param_dict[chunkName].iloc[y,0]
-        print (input)
-        
-        if input == '-I_off_n' or input == '-I_g_on_n':
-                input = input + "-" + str(temp*10)
-                if temp == 10:
-                    temp = 0
-                else:
-                    temp = temp + 1
+        folder = chunkName + str(tech_param_dict[chunkName].iloc[y,0])
+        directory = "results/" + folder + "/"
 
         if pd.isnull(input):
             continue
-        
-        input = chunkName + input
-        directory = "results/" + input
+
         if not os.path.exists(directory):
             os.makedirs(directory)
         else:
             shutil.rmtree(directory)         
             os.makedirs(directory)
-
+        
         for x in range (len(tech_param_dict[chunkName].columns)):
+            
+            print (folder)
+
+
+            if folder == "current-I_off_n" or folder == "current-I_g_on_n":
+                input = folder + "-" + str(tech_param_dict[chunkName].columns[x]) + "-" + str(tech_param_dict[chunkName].iloc[y,2])
+            else:
+                input = folder + "-" + str(tech_param_dict[chunkName].columns[x]).replace( '/', '')
+
+            print (input)
 
             cell = tech_param_dict[chunkName].iloc[y,x]
             if not(pd.isnull(cell)) and cell[0].isdigit():
-                if tech_param_dict[chunkName].iat[y,x] == 0:
-                    tech_param_dict[chunkName].iat[y,x] = 1
+                print(tech_param_dict[chunkName].iat[y,x])
+                if tech_param_dict[chunkName].iat[y,x] == '0':
+                    tech_param_dict[chunkName].iat[y,x] = '1'
                 else:
                     tech_param_dict[chunkName].iat[y,x] = float_to_exponential(float(tech_param_dict[chunkName].iat[y,x])*100)
-                # print(tech_param_dict[chunkName].iat[y,x])
+                print(tech_param_dict[chunkName].iat[y,x])
+                
 
                 # print (tech_param_dict[chunkName])
-                print (input)
-                convert(tech_param_dict, 'tech_params/90nm.dat') #converts dictionary into .dat file
+                convert(tech_param_dict, 'tech_params/' + tech_size + ".dat") #converts dictionary into .dat file
 
+                print (subprocess.check_output("./cacti -infile cache.cfg > output.txt", shell=True, text=True))
                 os.system("./cacti -infile cache.cfg > output.txt")
-                if os.system("./cacti -infile cache.cfg > output.txt") != 0:
-                    data = partition("tech_params_control/90nm.dat") #resets data tuple
-                    tech_param_dict = merge('tech_params/90nm.dat') #puts each dataframe in the dictionary, labeled
-                    convert(tech_param_dict, 'tech_params/90nm.dat') #converts dictionary into .dat file
-                    continue
-                os.system("diff control.txt output.txt > " + directory + "/" + str(tech_param_dict[chunkName].columns[x]).replace( '/', '') + input + ".txt")
+                # if str(subprocess.check_output("./cacti -infile cache.cfg > output.txt", shell=True, text=True)).find("Assertion failed:") != -1:
+                #     print("hello")
+                #     data = partition("tech_params_control/90nm.dat") #resets data tuple
+                #     tech_param_dict = merge('tech_params/90nm.dat') #puts each dataframe in the dictionary, labeled
+                #     convert(tech_param_dict, 'tech_params/90nm.dat') #converts dictionary into .dat file
+                #     continue
+                os.system("diff control.txt output.txt > " + directory + input + ".txt")
 
-
-                diff = open(directory + "/" + str(tech_param_dict[chunkName].columns[x]).replace( '/', '') + input + ".txt")
+                diff = open(directory + input + ".txt")
                 lines = diff.readlines()
-                counter = 0; 
-                value = None
-                value2 = None
 
                 for word in outputs:
+                    counter = 0; 
+                    value = None
+                    value2 = None
                     for line in lines:
                         if line.find(word) != -1 and counter == 1:
                             # print("found2")
                             value2 = substring_after(line, ":")
                             value2 = value2.replace('\n', '')
-                            if pd.isnull(table_outputs.at[input,word]) or table_outputs.at[input,word] == 'none':
-                                table_outputs.at[input,word] = str(tech_param_dict[chunkName].columns[x]) + ":, control:" + value + ", output:" + value2 + "\n"
-                            else:
-                                table_outputs.at[input,word] = table_outputs.at[input,word] + str(tech_param_dict[chunkName].columns[x]) + ":, control:" + value + ", output:" + value2 + "\n"
-                            counter = 0; 
+                            table_outputs.at[input,word] =  value + ", " + value2 + "\n"
                             break
                         elif line.find(word) != -1:
                             # print("found1")
                             counter = 1
                             value = substring_after(line, ":")
                             value = value.replace('\n', '')
+                        elif line.find("ERROR: no valid tag organizations found") != -1:
+                            # print("found1")
+                            table_outputs.loc[input] = "ERROR: no valid tag organizations found"
+                            break
                         else:
                             # print (table_outputs.at[input, word])
                             if pd.isnull(table_outputs.at[input, word]):
                                 table_outputs.at[input, word] = "none"   
                             # print (table_outputs.at[input, word])
 
-                data = partition("tech_params_control/90nm.dat") #resets data tuple
-                tech_param_dict = merge('tech_params/90nm.dat') #puts each dataframe in the dictionary, labeled
-                convert(tech_param_dict, 'tech_params/90nm.dat') #converts dictionary into .dat file
+                data = partition('tech_params_control/' + tech_size + ".dat") #resets data tuple
+                tech_param_dict = merge('tech_params/' + tech_size + ".dat") #puts each dataframe in the dictionary, labeled
+                convert(tech_param_dict, 'tech_params/' + tech_size + ".dat") #converts dictionary into .dat file
 
-table_outputs.to_csv("final.csv", index=True, header=True)
+table_outputs.to_csv("cache.csv", index=True, header=True)
     
 '''
 readL: outputs dataframesss
