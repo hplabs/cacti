@@ -110,12 +110,6 @@ for chunkName in tech_param_dict:
 
         if pd.isnull(input):
             continue
-
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-        else:
-            shutil.rmtree(directory)         
-            os.makedirs(directory)
         
         for x in range (len(tech_param_dict[chunkName].columns)):
             
@@ -130,7 +124,7 @@ for chunkName in tech_param_dict:
             print (input)
 
             cell = tech_param_dict[chunkName].iloc[y,x]
-            if not(pd.isnull(cell)) and cell[0].isdigit():
+            if not(pd.isnull(cell)) and cell[0].isdigit() and input.find("-temp") == -1:
                 print(tech_param_dict[chunkName].iat[y,x])
                 if tech_param_dict[chunkName].iat[y,x] == '0':
                     tech_param_dict[chunkName].iat[y,x] = '1'
@@ -178,7 +172,7 @@ for chunkName in tech_param_dict:
                         else:
                             # print (table_outputs.at[input, word])
                             if pd.isnull(table_outputs.at[input, word]):
-                                table_outputs.at[input, word] = "none"   
+                                table_outputs.at[input, word] = " "   
                             # print (table_outputs.at[input, word])
 
                 data = partition('tech_params_control/' + tech_size + ".dat") #resets data tuple
