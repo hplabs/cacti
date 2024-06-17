@@ -108,6 +108,9 @@ for chunkName in tech_param_dict:
         folder = chunkName + str(tech_param_dict[chunkName].iloc[y,0])
         directory = "results/" + folder + "/"
 
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+
         if pd.isnull(input):
             continue
         
